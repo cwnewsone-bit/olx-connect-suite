@@ -1,0 +1,22 @@
+{
+  "name": "responder-olx-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Backend API for Responder OLX",
+  "main": "src/server.mjs",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "axios": "^1.6.5",
+    "helmet": "^7.1.0",
+    "cors": "^2.8.5",
+    "express-rate-limit": "^7.1.5",
+    "jsonwebtoken": "^9.0.2",
+    "bcrypt": "^5.1.1",
+    "zod": "^3.22.4"
+  }
+}
