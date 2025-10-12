@@ -7,6 +7,8 @@ import env from '../env.mjs';
 
 const router = express.Router();
 
+// Calcula expiração
+
 const OLX_AUTH_URL = 'https://auth.olx.com.br/oauth';
 const OLX_TOKEN_URL = 'https://auth.olx.com.br/oauth/token';
 
@@ -46,7 +48,7 @@ router.get('/olx/start-url', authMiddleware, async (req, res, next) => {
  * GET /rest/oauth2-credential/callback
  * Callback da OLX após autorização
  */
-router.get('/rest/oauth2-credential/callback', async (req, res, next) => {
+router.get('/callback', async (req, res, next) => {
   try {
     const { code, state: stateToken, error: oauthError } = req.query;
     
@@ -68,8 +70,8 @@ router.get('/rest/oauth2-credential/callback', async (req, res, next) => {
       console.error('State inválido:', err.message);
       return res.redirect(`${env.FRONT_BASE_URL}/olx/conectado?error=invalid_state`);
     }
-    
-    // Troca code por token
+
+// Troca code por token
     const tokenParams = new URLSearchParams({
       code,
       client_id: env.OLX_CLIENT_ID,
@@ -77,41 +79,76 @@ router.get('/rest/oauth2-credential/callback', async (req, res, next) => {
       redirect_uri: env.OLX_REDIRECT_URI,
       grant_type: 'authorization_code',
     });
-    
+
     const tokenResponse = await axios.post(OLX_TOKEN_URL, tokenParams.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
-    
-    const { access_token, token_type, expires_in } = tokenResponse.data;
-    
+
+    // Desestrutura AGORA (depois do POST)
+    const {
+      access_token,
+      token_type,
+      refresh_token,
+      scope,
+      expires_in,
+    } = tokenResponse.data || {};
+
     if (!access_token) {
       throw new Error('Token não retornado pela OLX');
     }
-    
-    // Calcula expiração
+
+    // ⚠️ Declare AQUI, antes de usar em qualquer outro lugar
     const obtainedAt = new Date();
-    const expiresAt = expires_in
+    const expiresAt = typeof expires_in === 'number'
       ? new Date(obtainedAt.getTime() + expires_in * 1000)
       : null;
-    
-    // Persiste metadados da conexão (SEM o token)
-    await db.query(
-      `INSERT INTO olx.oauth_connections (user_id, provider, provider_user_email, obtained_at, expires_at)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (user_id, provider)
-       DO UPDATE SET
-         provider_user_email = $3,
-         obtained_at = $4,
-         expires_at = $5,
-         updated_at = now()`,
-      [statePayload.uid, 'OLX', null, obtainedAt, expiresAt]
+
+    // (opcional) e-mail vindo do perfil OLX (ainda não implementado)
+    let providerEmail = null;
+
+    // 🔹 Fallback obrigatório por causa do NOT NULL na coluna provider_user_email
+    const userEmailRes = await db.query(
+      'SELECT email FROM olx.usuarios WHERE id = $1',
+      [statePayload.uid]
     );
-    
-    // TODO: Opcional - buscar email do perfil OLX se houver endpoint
-    
+    const fallbackEmail = userEmailRes.rows[0]?.email || 'olx-unknown@local';
+    providerEmail = providerEmail ?? fallbackEmail;
+
+    // ✅ UPSERT completo na tabela REAL `olx.conexoes` (sem updated_at)
+    await db.query(
+      `INSERT INTO olx.conexoes (
+        user_id, provider, provider_user_email,
+        access_token, refresh_token, token_type, scope,
+        obtained_at, expires_at
+      ) VALUES (
+        $1, 'OLX', $2,
+        $3, $4, $5, $6,
+        $7, $8
+      )
+      ON CONFLICT (user_id, provider)
+      DO UPDATE SET
+        provider_user_email = EXCLUDED.provider_user_email,
+        access_token        = EXCLUDED.access_token,
+        refresh_token       = EXCLUDED.refresh_token,
+        token_type          = EXCLUDED.token_type,
+        scope               = EXCLUDED.scope,
+        obtained_at         = EXCLUDED.obtained_at,
+        expires_at          = EXCLUDED.expires_at`,
+      [
+        statePayload.uid,
+        providerEmail,
+        access_token || null,
+        refresh_token || null,
+        token_type || 'Bearer',
+        scope || null,
+        obtainedAt,
+        expiresAt
+      ]
+    );
+
+    // Redireciona para o front
     const returnTo = normalizeReturnTo(statePayload.returnTo);
     const redirectUrl = new URL(returnTo, env.FRONT_BASE_URL);
-    
     res.redirect(redirectUrl.toString());
   } catch (error) {
     console.error('Erro no callback OAuth:', error.message);

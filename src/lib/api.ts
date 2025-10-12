@@ -1,4 +1,6 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://80.190.82.217/:4000';
+const DEBUG = import.meta.env.VITE_DEBUG_API === '1';
+function log(...args: any[]) { if (DEBUG) console.log('[API]', ...args); }
 
 export interface ApiError {
   error: string;
@@ -49,13 +51,21 @@ export async function apiRequest<T = any>(
       });
     }
     
-    const data = await response.json();
-    
+    const ct = response.headers.get('content-type') || '';
+    const isJson = ct.includes('application/json');
+    const payload = isJson ? await response.json().catch(() => ({})) : await response.text().catch(() => '');
+
+    if (DEBUG) log('←', response.status, url, payload);
+
     if (!response.ok) {
-      throw new ApiException(response.status, data);
+      const errObj: ApiError = isJson
+        ? (payload as any)
+        : { error: 'Erro', message: typeof payload === 'string' ? payload : 'Falha na requisição' };
+      throw new ApiException(response.status, errObj);
     }
-    
-    return data as T;
+
+    return payload as T;
+
   } catch (error) {
     if (error instanceof ApiException) {
       throw error;
