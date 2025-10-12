@@ -23,7 +23,7 @@ router.post('/login', async (req, res, next) => {
     
     // Busca usuário
     const result = await db.query(
-      'SELECT id, email, nome, senha_hash FROM olx.usuarios WHERE email = $1',
+      'SELECT id, nome, email, created_at, TRIM(password_hash) AS senha_hash FROM olx.usuarios WHERE LOWER(email) = LOWER($1)',
       [email.toLowerCase()]
     );
     
@@ -33,7 +33,7 @@ router.post('/login', async (req, res, next) => {
     if (!user) {
       const senhaHash = await bcrypt.hash(senha, 10);
       const insertResult = await db.query(
-        'INSERT INTO olx.usuarios (email, senha_hash, nome) VALUES ($1, $2, $3) RETURNING id, email, nome',
+        'INSERT INTO olx.usuarios (email, password_hash, nome) VALUES ($1, $2, $3) RETURNING id, email, nome',
         [email.toLowerCase(), senhaHash, email.split('@')[0]]
       );
       user = insertResult.rows[0];
