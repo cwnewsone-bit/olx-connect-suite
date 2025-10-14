@@ -1,52 +1,51 @@
-import { useState, FormEvent, useEffect } from 'react';
-import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom';
+import { useState, FormEvent } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { Power } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { login, me } from '@/lib/auth';
-import { ApiException } from '@/lib/api';
+import { http } from '@/lib/http';
 import { toast } from 'sonner';
 import { i18n } from '@/lib/i18n';
 import { useAuth } from '@/contexts/AuthContext';
 
-export default function Login() {
+export default function Register() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [searchParams] = useSearchParams();
   const { refreshUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
-
-  const from = (location.state as any)?.from?.pathname || '/dashboard';
-  const expired = searchParams.get('expired');
-
-  useEffect(() => {
-    if (expired === '1') {
-      toast.error('Sua sessão expirou. Faça login novamente.');
-    }
-  }, [expired]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      await login({ email, senha });
+      const response = await http.post('/auth/register', {
+        email,
+        senha,
+        nome: nome || undefined,
+      });
+
+      const { token, webhookToken, webhookUrl } = response.data;
+
+      localStorage.setItem('auth_token', token);
       await refreshUser();
+
+      toast.success('Conta criada com sucesso!');
       
-      toast.success('Login realizado com sucesso!');
-      navigate(from, { replace: true });
-    } catch (error) {
-      console.error('Erro no login:', error);
+      // Passa dados do webhook via state
+      navigate('/onboarding', { 
+        state: { webhookToken, webhookUrl },
+        replace: true 
+      });
+    } catch (error: any) {
+      console.error('Erro no cadastro:', error);
       
-      if (error instanceof ApiException) {
-        toast.error(error.error.message);
-      } else {
-        toast.error('Erro ao fazer login. Tente novamente.');
-      }
+      const message = error.response?.data?.message || 'Erro ao criar conta. Tente novamente.';
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -60,13 +59,28 @@ export default function Login() {
             <Power className="h-6 w-6 text-white" />
           </div>
           <div>
-            <CardTitle className="text-2xl">{i18n.app.name}</CardTitle>
-            <CardDescription className="mt-2">{i18n.app.tagline}</CardDescription>
+            <CardTitle className="text-2xl">Criar conta</CardTitle>
+            <CardDescription className="mt-2">
+              Cadastre-se para começar a usar o {i18n.app.name}
+            </CardDescription>
           </div>
         </CardHeader>
 
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="nome">Nome (opcional)</Label>
+              <Input
+                id="nome"
+                type="text"
+                placeholder="Seu nome"
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+                disabled={isLoading}
+                autoComplete="name"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="email">{i18n.auth.email}</Label>
               <Input
@@ -91,8 +105,10 @@ export default function Login() {
                 onChange={(e) => setSenha(e.target.value)}
                 required
                 disabled={isLoading}
-                autoComplete="current-password"
+                autoComplete="new-password"
+                minLength={6}
               />
+              <p className="text-xs text-muted-foreground">Mínimo 6 caracteres</p>
             </div>
 
             <Button
@@ -100,25 +116,17 @@ export default function Login() {
               className="w-full"
               disabled={isLoading}
             >
-              {isLoading ? i18n.auth.loggingIn : i18n.auth.login}
+              {isLoading ? 'Criando conta...' : 'Criar conta'}
             </Button>
 
-            <div className="text-center space-y-2 text-sm">
-              <Link
-                to="/forgot-password"
-                className="text-muted-foreground hover:text-primary transition-colors block"
+            <div className="text-center text-sm">
+              <span className="text-muted-foreground">Já tem uma conta? </span>
+              <Link 
+                to="/login" 
+                className="text-primary hover:underline font-medium"
               >
-                {i18n.auth.forgotPassword}
+                Fazer login
               </Link>
-              <div>
-                <span className="text-muted-foreground">Não tem uma conta? </span>
-                <Link
-                  to="/register"
-                  className="text-primary hover:underline font-medium"
-                >
-                  {i18n.auth.createAccount}
-                </Link>
-              </div>
             </div>
           </form>
         </CardContent>

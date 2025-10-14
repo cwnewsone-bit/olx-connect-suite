@@ -30,6 +30,8 @@ export async function me(): Promise<Me> {
   return MeSchema.parse(data);
 }
 
+export type { Me } from './schemas';
+
 export function getToken(): string | null {
   return localStorage.getItem('auth_token');
 }
