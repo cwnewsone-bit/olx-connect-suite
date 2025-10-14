@@ -36,22 +36,32 @@ export type Anuncio = z.infer<typeof AnuncioSchema>;
 export const ContatoSchema = z.object({
   user_id: z.string().uuid(),
   contato_id: z.string().uuid(),
+
+  // pode vir null
   quando: z.string().datetime().nullable().optional(),
+
+  // podem vir vazios/null
   nome: z.string().nullable().optional(),
   telefone: z.string().nullable().optional(),
   email: z.string().email().nullable().optional(),
-  mensagem: z.string(),
-  chat_id: z.string(),
-  message_id: z.string(),
-  sender_type: z.enum(['buyer', 'account', 'system']),
-  origin: z.enum(['buyer', 'seller']),
-  anuncio_id: z.string().uuid(),
-  anuncio_titulo: z.string(),
+  mensagem: z.string().nullable().optional(),
+
+  // podem vir null
+  chat_id: z.string().nullable().optional(),
+  message_id: z.string().nullable().optional(),
+  sender_type: z.enum(['buyer', 'account', 'system']).nullable().optional(),
+
+  // na prática pode vir 'OLX', 'WhatsApp', 'buyer' etc.
+  origin: z.string().nullable().optional(),
+
+  // podem vir null quando não há match com anúncio
+  anuncio_id: z.string().uuid().nullable().optional(),
+  anuncio_titulo: z.string().nullable().optional(),
   anuncio_url: z.string().url().nullable().optional(),
   categoria: z.string().nullable().optional(),
   bairro: z.string().nullable().optional(),
   cidade: z.string().nullable().optional(),
-  status: z.string(),
+  status: z.string().nullable().optional(),
 });
 
 export type Contato = z.infer<typeof ContatoSchema>;

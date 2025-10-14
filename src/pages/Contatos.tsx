@@ -177,7 +177,7 @@ export default function Contatos() {
                     
                     <div className="flex flex-col items-end gap-2">
                       <Badge variant={contato.origin === 'buyer' ? 'info' : 'secondary'}>
-                        {contato.origin === 'buyer' ? 'Comprador' : 'Vendedor'}
+                        {contato.origin === 'buyer' ? 'Comprador' : 'Comprador'}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
                         {formatRelativeDate(contato.quando)}

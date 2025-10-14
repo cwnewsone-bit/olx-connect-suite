@@ -1,0 +1,25 @@
+{
+  "access_token": "0945a433e94e8cc72dc9b3ff3011bde1d4febe85",
+  "ad_list": [
+    {
+      "id": "TESTE-2101-0001",
+      "operation": "insert",
+      "category": 2101,
+      "subject": "Rodas aro 15 em ótimo estado",
+      "body": "Jogo de rodas aro 15, usadas, sem trincas. Não aceito trocas.",
+      "phone": 11987654321,
+      "type": "s",
+      "price": 1200,
+      "zipcode": "01311000",
+      "params": {
+        "condition": "2",         // 1=Novo, 2=Usado
+        "carcolor": "3",          // opcional (ex.: 3=Prata)
+        "exchange": "2"           // opcional (1=Sim, 2=Não)
+      },
+      "images": [
+        "https://via.placeholder.co/800x600?text=rodas1",
+        "https://via.placeholder.co/800x600?text=rodas2"
+      ]
+    }
+  ]
+}
