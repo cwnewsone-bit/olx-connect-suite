@@ -13,7 +13,7 @@ export async function getContatos(userId, query = {}) {
   let sql = `
     SELECT * FROM olx.v_contatos_list
     WHERE user_id = $1
-      AND (quando IS NULL OR quando >= now() - ($2 || ' days')::interval)
+      AND (quando IS NULL OR quando >= now() - make_interval(days => $2::int))
   `;
   
   const params = [userId, periodo];

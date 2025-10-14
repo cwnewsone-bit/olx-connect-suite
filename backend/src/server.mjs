@@ -7,6 +7,8 @@ import env from './env.mjs';
 import authRoutes from './routes/auth.mjs';
 import dataRoutes from './routes/data.mjs';
 import olxOAuthRoutes from './routes/olx-oauth.mjs';
+import olxAdsRoutes from './routes/olx-ads.mjs'; /* Busca anuncios*/
+import olxLeadsRoutes from './routes/olx-leads.mjs'; /* Rota para ler leads */
 
 const app = express();
 
@@ -55,6 +57,8 @@ app.use('/auth', loginLimiter, authRoutes);
 app.use('/api', dataRoutes);
 app.use('/oauth', olxOAuthRoutes);
 app.use('/rest/oauth2-credential', olxOAuthRoutes); // Callback OLX
+app.use(olxAdsRoutes);/* Rota de buscas de anuncios na olx*/
+app.use('/', olxLeadsRoutes);  /* Rota para ler leadsinfo */
 
 // 404
 app.use((req, res) => {

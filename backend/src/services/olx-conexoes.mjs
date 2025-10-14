@@ -106,6 +106,7 @@ export async function checkOlxStatusLive(userId) {
       reason: 'network_or_unknown'
     };
   }
+  
 }
 
 /**
@@ -137,5 +138,39 @@ export async function getOlxStatus(userId) {
     provider_user_email: conn.provider_user_email,
     obtained_at: conn.obtained_at || null,
     expires_at: conn.expires_at || null,
+  };
+
+}
+
+// Pega o access_token OLX mais recente do usuário (e valida expiração básica)
+export async function getOlxAccessTokenForUser(userId) {
+  const q = await db.query(
+    `SELECT access_token, refresh_token, expires_at, obtained_at
+       FROM olx.conexoes
+      WHERE user_id = $1 AND provider = 'OLX'
+      ORDER BY obtained_at DESC NULLS LAST
+      LIMIT 1`,
+    [userId]
+  );
+
+  if (!q.rows.length) {
+    throw new Error('no_olx_connection');
+  }
+
+  const row = q.rows[0];
+  if (!row.access_token) {
+    throw new Error('no_access_token');
+  }
+
+  // Se houver expires_at e estiver vencido, já acusamos (refresh pode ser implementado depois)
+  if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) {
+    throw new Error('token_expired');
+  }
+
+  return {
+    access_token: row.access_token,
+    refresh_token: row.refresh_token || null,
+    expires_at: row.expires_at ? new Date(row.expires_at).toISOString() : null,
+    obtained_at: row.obtained_at ? new Date(row.obtained_at).toISOString() : null,
   };
 }
