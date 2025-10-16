@@ -9,6 +9,8 @@ import dataRoutes from './routes/data.mjs';
 import olxOAuthRoutes from './routes/olx-oauth.mjs';
 import olxAdsRoutes from './routes/olx-ads.mjs'; /* Busca anuncios*/
 import olxLeadsRoutes from './routes/olx-leads.mjs'; /* Rota para ler leads */
+import olxDebugRoutes from './routes/olx-debug.mjs'; /*Rota de debug LEADS*/
+import wppRoutes from './routes/wpp.mjs';
 
 const app = express();
 
@@ -59,6 +61,8 @@ app.use('/oauth', olxOAuthRoutes);
 app.use('/rest/oauth2-credential', olxOAuthRoutes); // Callback OLX
 app.use(olxAdsRoutes);/* Rota de buscas de anuncios na olx*/
 app.use('/', olxLeadsRoutes);  /* Rota para ler leadsinfo */
+app.use('/api', olxDebugRoutes); /*Debug cadastro lead antes de producao*/
+app.use('/api/wpp', wppRoutes);
 
 // 404
 app.use((req, res) => {

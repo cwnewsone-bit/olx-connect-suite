@@ -7,7 +7,7 @@ import { parsePageSize } from '../utils.mjs';
 export async function getAnuncios(userId, query = {}) {
   const { page, size, offset } = parsePageSize(query);
   
-  let sql = 'SELECT * FROM olx.v_anuncios_list WHERE user_id = $1';
+  let sql = 'SELECT * FROM olx.v_anuncios_list_i18n WHERE user_id = $1';
   const params = [userId];
   let paramIndex = 2;
   
