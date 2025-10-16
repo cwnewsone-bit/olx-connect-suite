@@ -1,7 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 import db from '../db.mjs';
 import env from '../env.mjs';
 import { authMiddleware } from '../middlewares/auth.mjs';
@@ -19,48 +19,50 @@ const loginSchema = z.object({
  */
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, senha } = loginSchema.parse(req.body);
-    
-    // Busca usuário
-    const result = await db.query(
-      'SELECT id, nome, email, created_at, TRIM(password_hash) AS senha_hash FROM olx.usuarios WHERE LOWER(email) = LOWER($1)',
-      [email.toLowerCase()]
+    // normaliza antes de validar
+    const { email, senha } = loginSchema.parse({
+      email: (req.body?.email ?? '').toString().trim().toLowerCase(),
+      senha: (req.body?.senha ?? '').toString(),
+    });
+
+    // busca usuário
+    const { rows } = await db.query(
+      `SELECT id, nome, email, TRIM(password_hash) AS senha_hash
+         FROM olx.usuarios
+        WHERE LOWER(email) = LOWER($1)`,
+      [email]
     );
-    
-    let user = result.rows[0];
-    
-    // Se não existir, cria novo usuário (auto-registro)
+    const user = rows[0];
+
+    // não encontrado → 401 (não cria!)
     if (!user) {
-      const senhaHash = await bcrypt.hash(senha, 10);
-      const insertResult = await db.query(
-        'INSERT INTO olx.usuarios (email, password_hash, nome) VALUES ($1, $2, $3) RETURNING id, email, nome',
-        [email.toLowerCase(), senhaHash, email.split('@')[0]]
-      );
-      user = insertResult.rows[0];
-      user.senha_hash = senhaHash;
-    }
-    
-    // Valida senha
-    if (!(await bcrypt.compare(senha, user.senha_hash))) {
       return res.status(401).json({
         error: 'Credenciais inválidas',
-        message: 'Email ou senha incorretos'
+        message: 'Email ou senha incorretos',
       });
     }
-    
-    // Gera token JWT
+
+    // valida senha
+    const ok = await bcrypt.compare(senha, user.senha_hash);
+    if (!ok) {
+      return res.status(401).json({
+        error: 'Credenciais inválidas',
+        message: 'Email ou senha incorretos',
+      });
+    }
+
+    // gera JWT
     const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        nome: user.nome,
-      },
+      { id: user.id, email: user.email, nome: user.nome },
       env.JWT_SECRET,
       { expiresIn: env.JWT_EXPIRES }
     );
-    
-    res.json({ token });
+
+    return res.json({ token });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'invalid_body', details: error.issues });
+    }
     next(error);
   }
 });

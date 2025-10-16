@@ -170,7 +170,7 @@ export default function Anuncios() {
 
                   {/* Status e ações */}
                   <div className="flex items-center gap-4">
-                    <StatusBadge status={anuncio.status} />
+                    <StatusBadge status={anuncio.status} label={anuncio.status_pt} />
                     <div className="text-right text-sm">
                       <div className="font-medium">{anuncio.dias_online} dias</div>
                       <div className="text-muted-foreground">

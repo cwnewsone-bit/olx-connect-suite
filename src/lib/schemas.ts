@@ -26,7 +26,8 @@ export const AnuncioSchema = z.object({
   categoria: z.string().nullable().optional(),
   bairro: z.string().nullable().optional(),
   cidade: z.string().nullable().optional(),
-  status: z.string(),
+  status: z.string(),              // valor canônico da OLX
+  status_pt: z.string().optional(),// NOVO: traduzido pela view
   last_renovacao_at: z.string().datetime().nullable().optional(),
   dias_online: z.number(),
 });

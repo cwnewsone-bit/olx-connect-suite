@@ -34,6 +34,13 @@ const EnvSchema = z.object({
     .union([z.string(), z.number()])
     .optional()
     .transform((v) => `${v ?? ''}`.trim() === '1'),
+
+  // 👇 NOVO (Evolution)
+  EVO_BASE_URL: z.string().url({ message: 'Required (valid URL)' }),
+  EVO_API_KEY: z.string().min(1),
+
+  // 👇 Opcional (webhooks)
+  BACKEND_PUBLIC_URL: z.string().url().optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
