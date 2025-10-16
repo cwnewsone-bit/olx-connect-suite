@@ -1,642 +1,515 @@
-import { useState } from 'react';
-import { Send, MessageSquare, Mic, Image, MapPin, List, User, Plus, Copy, QrCode } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { toast } from 'sonner';
-import { http } from '@/lib/http';
+import { useState, useEffect } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { toast } from "sonner";
+import { Plus, Trash2, Phone, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { http } from "@/lib/http";
+
+type Instance = {
+  id: string;
+  instance_name: string;
+  number: string;
+  webhook?: string;
+  created_at: string;
+};
+
+type WelcomeFlow = {
+  enabled: boolean;
+  audioUrl: string;
+  list: {
+    title?: string;
+    text: string;
+    buttonText: string;
+    sections: Array<{
+      title?: string;
+      rows: Array<{
+        id: string;
+        title: string;
+        description?: string;
+      }>;
+    }>;
+  };
+  actions: Record<string, {
+    type: 'AVAILABILITY_CHECK' | 'SEND_PHOTOS_REQUEST' | 'SEND_ADDRESS_TEXT' | 'OTHER_SEND_AUDIO';
+    text?: string;
+    mapsUrl?: string;
+    audioUrl?: string;
+  }>;
+};
 
 export default function WhatsApp() {
-  const [instanceName, setInstanceName] = useState('');
-  const [instanceNumber, setInstanceNumber] = useState('');
-  const [webhook, setWebhook] = useState('');
-  const [qrCode, setQrCode] = useState('');
-  const [createdInstance, setCreatedInstance] = useState('');
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
+  const [instanceStatus, setInstanceStatus] = useState<any>(null);
+  const [welcomeFlow, setWelcomeFlow] = useState<WelcomeFlow>({
+    enabled: false,
+    audioUrl: "",
+    list: {
+      text: "Escolha uma opção:",
+      buttonText: "Ver opções",
+      sections: [{
+        title: "Atendimento",
+        rows: []
+      }]
+    },
+    actions: {}
+  });
   const [loading, setLoading] = useState(false);
 
-  // Estado para mensagens
-  const [recipient, setRecipient] = useState('');
-  const [activeInstance, setActiveInstance] = useState('');
+  useEffect(() => {
+    loadInstances();
+  }, []);
 
-  // Criar instância
-  const handleCreateInstance = async () => {
-    if (!instanceName || !instanceNumber) {
-      toast.error('Preencha nome da instância e número');
-      return;
+  useEffect(() => {
+    if (selectedInstance) {
+      loadInstanceStatus();
+      loadWelcomeFlow();
     }
+  }, [selectedInstance]);
 
-    setLoading(true);
+  const loadInstances = async () => {
     try {
-      const payload: any = {
-        instanceName,
-        number: instanceNumber,
-      };
-      if (webhook) payload.webhook = webhook;
-
-      const { data } = await http.post('/api/wpp/instances', payload);
-      
-      toast.success('Instância criada com sucesso!');
-      setCreatedInstance(instanceName);
-      setActiveInstance(instanceName);
-      
-      // Verificar se tem QR code na resposta
-      if (data.evolution?.qrcode?.base64) {
-        setQrCode(data.evolution.qrcode.base64);
-      } else if (data.evolution?.qrcode) {
-        setQrCode(data.evolution.qrcode);
+      const { data } = await http.get('/api/wpp/instances');
+      setInstances(data.instances || []);
+      if (data.instances?.length > 0 && !selectedInstance) {
+        setSelectedInstance(data.instances[0].instance_name);
       }
-    } catch (error: any) {
-      const msg = error?.response?.data?.details?.message || error?.response?.data?.message || 'Erro ao criar instância';
-      toast.error(msg);
-    } finally {
-      setLoading(false);
+    } catch (err: any) {
+      console.error('Error loading instances:', err);
+      toast.error('Erro ao carregar instâncias');
     }
   };
 
-  // Enviar texto
-  const handleSendText = async (text: string) => {
-    if (!activeInstance || !recipient || !text) {
-      toast.error('Preencha todos os campos');
+  const loadInstanceStatus = async () => {
+    if (!selectedInstance) return;
+    try {
+      const { data } = await http.get(`/api/wpp/${selectedInstance}/status`);
+      setInstanceStatus(data.status);
+    } catch (err: any) {
+      console.error('Error loading status:', err);
+    }
+  };
+
+  const loadWelcomeFlow = async () => {
+    if (!selectedInstance) return;
+    try {
+      const { data } = await http.get(`/api/wpp/${selectedInstance}/welcome-flow`);
+      setWelcomeFlow(data.flow);
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        console.log('No welcome flow configured yet');
+      } else {
+        console.error('Error loading welcome flow:', err);
+      }
+    }
+  };
+
+  const saveWelcomeFlow = async () => {
+    if (!selectedInstance) {
+      toast.error('Selecione uma instância');
+      return;
+    }
+
+    const allRowIds = welcomeFlow.list.sections.flatMap(s => s.rows.map(r => r.id));
+    const missingActions = allRowIds.filter(id => !welcomeFlow.actions[id]);
+    
+    if (missingActions.length > 0) {
+      toast.error(`Faltam ações para os IDs: ${missingActions.join(', ')}`);
+      return;
+    }
+
+    if (welcomeFlow.enabled && !welcomeFlow.audioUrl) {
+      toast.error('URL do áudio é obrigatória quando o fluxo está ativado');
       return;
     }
 
     setLoading(true);
     try {
-      await http.post(`/api/wpp/${activeInstance}/messages/text`, {
-        to: recipient,
-        text,
-      });
-      toast.success('Mensagem enviada!');
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Erro ao enviar');
+      await http.put(`/api/wpp/${selectedInstance}/welcome-flow`, welcomeFlow);
+      toast.success('Fluxo de boas-vindas salvo com sucesso!');
+    } catch (err: any) {
+      console.error('Error saving welcome flow:', err);
+      toast.error(err.response?.data?.message || 'Erro ao salvar fluxo');
     } finally {
       setLoading(false);
     }
   };
 
-  // Enviar áudio
-  const handleSendAudio = async (audioUrl: string) => {
-    if (!activeInstance || !recipient || !audioUrl) {
-      toast.error('Preencha todos os campos');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await http.post(`/api/wpp/${activeInstance}/messages/audio`, {
-        to: recipient,
-        audioUrl,
-      });
-      toast.success('Áudio enviado!');
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Erro ao enviar');
-    } finally {
-      setLoading(false);
-    }
+  const addRow = (sectionIndex: number) => {
+    const newRow = {
+      id: `OP_${Date.now()}`,
+      title: "",
+      description: ""
+    };
+    
+    const newSections = [...welcomeFlow.list.sections];
+    newSections[sectionIndex].rows.push(newRow);
+    
+    setWelcomeFlow({
+      ...welcomeFlow,
+      list: { ...welcomeFlow.list, sections: newSections }
+    });
   };
 
-  // Enviar mídia
-  const handleSendMedia = async (mediaUrl: string, caption?: string) => {
-    if (!activeInstance || !recipient || !mediaUrl) {
-      toast.error('Preencha todos os campos');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await http.post(`/api/wpp/${activeInstance}/messages/media`, {
-        to: recipient,
-        mediaUrl,
-        caption,
-      });
-      toast.success('Mídia enviada!');
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Erro ao enviar');
-    } finally {
-      setLoading(false);
-    }
+  const removeRow = (sectionIndex: number, rowIndex: number) => {
+    const newSections = [...welcomeFlow.list.sections];
+    const removedId = newSections[sectionIndex].rows[rowIndex].id;
+    newSections[sectionIndex].rows.splice(rowIndex, 1);
+    
+    const newActions = { ...welcomeFlow.actions };
+    delete newActions[removedId];
+    
+    setWelcomeFlow({
+      ...welcomeFlow,
+      list: { ...welcomeFlow.list, sections: newSections },
+      actions: newActions
+    });
   };
 
-  // Enviar localização
-  const handleSendLocation = async (lat: number, lng: number, name?: string, address?: string) => {
-    if (!activeInstance || !recipient || !lat || !lng) {
-      toast.error('Preencha todos os campos obrigatórios');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await http.post(`/api/wpp/${activeInstance}/messages/location`, {
-        to: recipient,
-        latitude: lat,
-        longitude: lng,
-        name,
-        address,
-      });
-      toast.success('Localização enviada!');
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Erro ao enviar');
-    } finally {
-      setLoading(false);
-    }
+  const updateRow = (sectionIndex: number, rowIndex: number, field: string, value: string) => {
+    const newSections = [...welcomeFlow.list.sections];
+    newSections[sectionIndex].rows[rowIndex] = {
+      ...newSections[sectionIndex].rows[rowIndex],
+      [field]: value
+    };
+    
+    setWelcomeFlow({
+      ...welcomeFlow,
+      list: { ...welcomeFlow.list, sections: newSections }
+    });
   };
 
-  // Enviar lista
-  const handleSendList = async (title: string, text: string, buttonText: string, sections: any[]) => {
-    if (!activeInstance || !recipient || !text || !buttonText || sections.length === 0) {
-      toast.error('Preencha todos os campos obrigatórios');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await http.post(`/api/wpp/${activeInstance}/messages/list`, {
-        to: recipient,
-        title,
-        text,
-        buttonText,
-        sections,
-      });
-      toast.success('Lista enviada!');
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Erro ao enviar');
-    } finally {
-      setLoading(false);
-    }
+  const updateAction = (rowId: string, field: string, value: any) => {
+    setWelcomeFlow({
+      ...welcomeFlow,
+      actions: {
+        ...welcomeFlow.actions,
+        [rowId]: {
+          ...welcomeFlow.actions[rowId],
+          [field]: value
+        }
+      }
+    });
   };
 
-  // Enviar contato
-  const handleSendContact = async (fullName: string, org: string, phones: any[]) => {
-    if (!activeInstance || !recipient || !fullName || phones.length === 0) {
-      toast.error('Preencha todos os campos obrigatórios');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await http.post(`/api/wpp/${activeInstance}/messages/contact`, {
-        to: recipient,
-        contact: {
-          fullName,
-          org,
-          phones,
-        },
-      });
-      toast.success('Contato enviado!');
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Erro ao enviar');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Salvar contato no banco
-  const handleSaveContact = async (phone: string, name: string) => {
-    if (!phone || !name) {
-      toast.error('Preencha telefone e nome');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await http.post('/api/contacts', { phone, name });
-      toast.success('Contato salvo!');
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'Erro ao salvar contato');
-    } finally {
-      setLoading(false);
+  const getStatusBadge = () => {
+    if (!instanceStatus) return <Badge variant="secondary">Carregando...</Badge>;
+    
+    const state = instanceStatus.instance?.state;
+    if (state === 'open') {
+      return <Badge className="bg-green-500"><CheckCircle2 className="w-3 h-3 mr-1" />Conectado</Badge>;
+    } else if (state === 'connecting') {
+      return <Badge variant="secondary"><RefreshCw className="w-3 h-3 mr-1 animate-spin" />Conectando...</Badge>;
+    } else {
+      return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Desconectado</Badge>;
     }
   };
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <MessageSquare className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-3xl font-bold">WhatsApp</h1>
-          <p className="text-muted-foreground">Configure instâncias e envie mensagens</p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold">WhatsApp</h1>
+        <p className="text-muted-foreground">Gerencie suas instâncias e configure mensagens automáticas</p>
       </div>
 
-      {/* Seção: Criar Instância */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Criar Instância
-          </CardTitle>
-          <CardDescription>Conecte um número do WhatsApp via Evolution API</CardDescription>
+          <CardTitle>Instâncias Conectadas</CardTitle>
+          <CardDescription>Selecione uma instância para configurar</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label htmlFor="instanceName">Nome da Instância*</Label>
-              <Input
-                id="instanceName"
-                placeholder="inst_meuusuario_001"
-                value={instanceName}
-                onChange={(e) => setInstanceName(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="instanceNumber">Número (E.164)*</Label>
-              <Input
-                id="instanceNumber"
-                placeholder="5527997222542"
-                value={instanceNumber}
-                onChange={(e) => setInstanceNumber(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="webhook">Webhook (HTTPS, opcional)</Label>
-            <Input
-              id="webhook"
-              placeholder="https://seu-dominio.com/webhooks/evolution"
-              value={webhook}
-              onChange={(e) => setWebhook(e.target.value)}
-            />
-          </div>
-
-          <Button onClick={handleCreateInstance} disabled={loading}>
-            {loading ? 'Criando...' : 'Criar Instância'}
-          </Button>
-
-          {createdInstance && (
-            <div className="mt-4 p-4 bg-muted rounded-lg space-y-2">
-              <p className="text-sm font-medium">✓ Instância criada: {createdInstance}</p>
+        <CardContent>
+          <div className="flex gap-4 flex-wrap">
+            {instances.map((inst) => (
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  navigator.clipboard.writeText(createdInstance);
-                  toast.success('Copiado!');
-                }}
+                key={inst.id}
+                variant={selectedInstance === inst.instance_name ? "default" : "outline"}
+                onClick={() => setSelectedInstance(inst.instance_name)}
+                className="flex items-center gap-2"
               >
-                <Copy className="h-4 w-4 mr-2" />
-                Copiar nome
+                <Phone className="w-4 h-4" />
+                {inst.instance_name}
+              </Button>
+            ))}
+            {instances.length === 0 && (
+              <p className="text-sm text-muted-foreground">Nenhuma instância criada ainda</p>
+            )}
+          </div>
+
+          {selectedInstance && (
+            <div className="mt-4 flex items-center gap-2">
+              <span className="text-sm font-medium">Status:</span>
+              {getStatusBadge()}
+              <Button size="sm" variant="ghost" onClick={loadInstanceStatus}>
+                <RefreshCw className="w-4 h-4" />
               </Button>
             </div>
           )}
 
-          {qrCode && (
-            <div className="mt-4 p-4 border rounded-lg space-y-2">
-              <div className="flex items-center gap-2">
-                <QrCode className="h-5 w-5" />
-                <p className="font-medium">Escaneie o QR Code no WhatsApp</p>
-              </div>
-              <img src={qrCode} alt="QR Code" className="max-w-xs mx-auto" />
+          {instanceStatus?.qrcode?.base64 && (
+            <div className="mt-4">
+              <p className="text-sm mb-2">Escaneie o QR Code com seu WhatsApp:</p>
+              <img src={instanceStatus.qrcode.base64} alt="QR Code" className="max-w-xs border rounded" />
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Seção: Mensagens */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Enviar Mensagens</CardTitle>
-          <CardDescription>Configure mensagens de boas-vindas e automações</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label htmlFor="activeInstance">Instância Ativa</Label>
-              <Input
-                id="activeInstance"
-                placeholder="Nome da instância"
-                value={activeInstance}
-                onChange={(e) => setActiveInstance(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="recipient">Destinatário (E.164)*</Label>
-              <Input
-                id="recipient"
-                placeholder="5527997222542"
-                value={recipient}
-                onChange={(e) => setRecipient(e.target.value)}
-              />
-            </div>
-          </div>
+      <Tabs defaultValue="flow-builder" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="flow-builder">Flow Builder</TabsTrigger>
+          <TabsTrigger value="manual">Envio Manual</TabsTrigger>
+        </TabsList>
 
-          <Tabs defaultValue="text" className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="text">
-                <MessageSquare className="h-4 w-4 mr-2" />
-                Texto
-              </TabsTrigger>
-              <TabsTrigger value="audio">
-                <Mic className="h-4 w-4 mr-2" />
-                Áudio
-              </TabsTrigger>
-              <TabsTrigger value="media">
-                <Image className="h-4 w-4 mr-2" />
-                Mídia
-              </TabsTrigger>
-              <TabsTrigger value="location">
-                <MapPin className="h-4 w-4 mr-2" />
-                Local
-              </TabsTrigger>
-              <TabsTrigger value="list">
-                <List className="h-4 w-4 mr-2" />
-                Lista
-              </TabsTrigger>
-              <TabsTrigger value="contact">
-                <User className="h-4 w-4 mr-2" />
-                Contato
-              </TabsTrigger>
-            </TabsList>
+        <TabsContent value="flow-builder" className="space-y-4">
+          {!selectedInstance ? (
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-center text-muted-foreground">Selecione uma instância para configurar o fluxo</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Mensagem de Boas-vindas (Automática)</CardTitle>
+                    <CardDescription>Configure o fluxo enviado automaticamente no primeiro contato</CardDescription>
+                  </div>
+                  <Switch
+                    checked={welcomeFlow.enabled}
+                    onCheckedChange={(checked) => setWelcomeFlow({ ...welcomeFlow, enabled: checked })}
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="audioUrl">Passo 1: URL do Áudio Inicial *</Label>
+                  <Input
+                    id="audioUrl"
+                    placeholder="https://cdn.exemplo.com/boas-vindas.mp3"
+                    value={welcomeFlow.audioUrl}
+                    onChange={(e) => setWelcomeFlow({ ...welcomeFlow, audioUrl: e.target.value })}
+                    disabled={!welcomeFlow.enabled}
+                  />
+                  <p className="text-xs text-muted-foreground">Áudio de boas-vindas (será enviado primeiro)</p>
+                </div>
 
-            <TabsContent value="text" className="space-y-4">
-              <TextMessageForm onSend={handleSendText} loading={loading} />
-            </TabsContent>
+                <div className="space-y-4">
+                  <Label>Passo 2: Menu Interativo (WhatsApp List)</Label>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="listTitle">Título (opcional)</Label>
+                      <Input
+                        id="listTitle"
+                        placeholder="Opções"
+                        value={welcomeFlow.list.title || ""}
+                        onChange={(e) => setWelcomeFlow({
+                          ...welcomeFlow,
+                          list: { ...welcomeFlow.list, title: e.target.value }
+                        })}
+                        disabled={!welcomeFlow.enabled}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="listButtonText">Texto do Botão *</Label>
+                      <Input
+                        id="listButtonText"
+                        placeholder="Ver opções"
+                        value={welcomeFlow.list.buttonText}
+                        onChange={(e) => setWelcomeFlow({
+                          ...welcomeFlow,
+                          list: { ...welcomeFlow.list, buttonText: e.target.value }
+                        })}
+                        disabled={!welcomeFlow.enabled}
+                      />
+                    </div>
+                  </div>
 
-            <TabsContent value="audio" className="space-y-4">
-              <AudioMessageForm onSend={handleSendAudio} loading={loading} />
-            </TabsContent>
+                  <div>
+                    <Label htmlFor="listText">Texto da Mensagem *</Label>
+                    <Textarea
+                      id="listText"
+                      placeholder="Escolha uma opção:"
+                      value={welcomeFlow.list.text}
+                      onChange={(e) => setWelcomeFlow({
+                        ...welcomeFlow,
+                        list: { ...welcomeFlow.list, text: e.target.value }
+                      })}
+                      disabled={!welcomeFlow.enabled}
+                    />
+                  </div>
 
-            <TabsContent value="media" className="space-y-4">
-              <MediaMessageForm onSend={handleSendMedia} loading={loading} />
-            </TabsContent>
+                  {welcomeFlow.list.sections.map((section, sectionIndex) => (
+                    <div key={sectionIndex} className="border rounded-lg p-4 space-y-4">
+                      <Label>Seção: {section.title || `Seção ${sectionIndex + 1}`}</Label>
+                      
+                      {section.rows.map((row, rowIndex) => (
+                        <Accordion key={rowIndex} type="single" collapsible>
+                          <AccordionItem value={row.id}>
+                            <AccordionTrigger className="text-sm">
+                              {row.title || `Opção ${rowIndex + 1}`} ({row.id})
+                            </AccordionTrigger>
+                            <AccordionContent className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <Label>ID da Opção *</Label>
+                                  <Input
+                                    value={row.id}
+                                    onChange={(e) => updateRow(sectionIndex, rowIndex, 'id', e.target.value)}
+                                    disabled={!welcomeFlow.enabled}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>Título *</Label>
+                                  <Input
+                                    placeholder="Ex: Disponibilidade do veículo?"
+                                    value={row.title}
+                                    onChange={(e) => updateRow(sectionIndex, rowIndex, 'title', e.target.value)}
+                                    disabled={!welcomeFlow.enabled}
+                                  />
+                                </div>
+                              </div>
 
-            <TabsContent value="location" className="space-y-4">
-              <LocationMessageForm onSend={handleSendLocation} loading={loading} />
-            </TabsContent>
+                              <div>
+                                <Label>Descrição (opcional)</Label>
+                                <Input
+                                  placeholder="Ex: Consulta OLX"
+                                  value={row.description || ""}
+                                  onChange={(e) => updateRow(sectionIndex, rowIndex, 'description', e.target.value)}
+                                  disabled={!welcomeFlow.enabled}
+                                />
+                              </div>
 
-            <TabsContent value="list" className="space-y-4">
-              <ListMessageForm onSend={handleSendList} loading={loading} />
-            </TabsContent>
+                              <div className="border-t pt-4 space-y-4">
+                                <Label>Ação ao Selecionar</Label>
+                                <Select
+                                  value={welcomeFlow.actions[row.id]?.type || ""}
+                                  onValueChange={(value) => updateAction(row.id, 'type', value)}
+                                  disabled={!welcomeFlow.enabled}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Selecione uma ação" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="AVAILABILITY_CHECK">Consultar Disponibilidade (OLX)</SelectItem>
+                                    <SelectItem value="SEND_PHOTOS_REQUEST">Solicitar Fotos (Resposta Texto)</SelectItem>
+                                    <SelectItem value="SEND_ADDRESS_TEXT">Enviar Endereço (Google Maps)</SelectItem>
+                                    <SelectItem value="OTHER_SEND_AUDIO">Outras (Enviar Áudio)</SelectItem>
+                                  </SelectContent>
+                                </Select>
 
-            <TabsContent value="contact" className="space-y-4">
-              <ContactMessageForm onSend={handleSendContact} loading={loading} />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+                                {welcomeFlow.actions[row.id]?.type === 'SEND_PHOTOS_REQUEST' && (
+                                  <div>
+                                    <Label>Texto da Resposta</Label>
+                                    <Input
+                                      placeholder="Um atendente vai te chamar agora 👍"
+                                      value={welcomeFlow.actions[row.id]?.text || ""}
+                                      onChange={(e) => updateAction(row.id, 'text', e.target.value)}
+                                      disabled={!welcomeFlow.enabled}
+                                    />
+                                  </div>
+                                )}
 
-      {/* Seção: Salvar Contatos */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Salvar Contato</CardTitle>
-          <CardDescription>Adicione contatos ao banco de dados local</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SaveContactForm onSave={handleSaveContact} loading={loading} />
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
+                                {welcomeFlow.actions[row.id]?.type === 'SEND_ADDRESS_TEXT' && (
+                                  <div>
+                                    <Label>URL do Google Maps</Label>
+                                    <Input
+                                      placeholder="https://maps.app.goo.gl/XXXX"
+                                      value={welcomeFlow.actions[row.id]?.mapsUrl || ""}
+                                      onChange={(e) => updateAction(row.id, 'mapsUrl', e.target.value)}
+                                      disabled={!welcomeFlow.enabled}
+                                    />
+                                  </div>
+                                )}
 
-// Sub-componentes de formulários
-function TextMessageForm({ onSend, loading }: { onSend: (text: string) => void; loading: boolean }) {
-  const [text, setText] = useState('');
+                                {welcomeFlow.actions[row.id]?.type === 'OTHER_SEND_AUDIO' && (
+                                  <div>
+                                    <Label>URL do Áudio</Label>
+                                    <Input
+                                      placeholder="https://cdn.exemplo.com/outras-duvidas.mp3"
+                                      value={welcomeFlow.actions[row.id]?.audioUrl || ""}
+                                      onChange={(e) => updateAction(row.id, 'audioUrl', e.target.value)}
+                                      disabled={!welcomeFlow.enabled}
+                                    />
+                                  </div>
+                                )}
+                              </div>
 
-  return (
-    <div className="space-y-3">
-      <div>
-        <Label htmlFor="text">Mensagem</Label>
-        <Textarea
-          id="text"
-          placeholder="Digite a mensagem..."
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={4}
-        />
-      </div>
-      <Button onClick={() => onSend(text)} disabled={loading}>
-        <Send className="h-4 w-4 mr-2" />
-        Enviar Texto
-      </Button>
-    </div>
-  );
-}
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => removeRow(sectionIndex, rowIndex)}
+                                disabled={!welcomeFlow.enabled}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Remover Opção
+                              </Button>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+                      ))}
 
-function AudioMessageForm({ onSend, loading }: { onSend: (url: string) => void; loading: boolean }) {
-  const [audioUrl, setAudioUrl] = useState('');
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addRow(sectionIndex)}
+                        disabled={!welcomeFlow.enabled}
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Adicionar Opção
+                      </Button>
+                    </div>
+                  ))}
+                </div>
 
-  return (
-    <div className="space-y-3">
-      <div>
-        <Label htmlFor="audioUrl">URL do Áudio</Label>
-        <Input
-          id="audioUrl"
-          placeholder="https://exemplo.com/audio.mp3"
-          value={audioUrl}
-          onChange={(e) => setAudioUrl(e.target.value)}
-        />
-      </div>
-      <Button onClick={() => onSend(audioUrl)} disabled={loading}>
-        <Send className="h-4 w-4 mr-2" />
-        Enviar Áudio
-      </Button>
-    </div>
-  );
-}
+                <div className="flex gap-2">
+                  <Button onClick={saveWelcomeFlow} disabled={loading || !welcomeFlow.enabled}>
+                    {loading ? 'Salvando...' : 'Salvar Fluxo'}
+                  </Button>
+                  <Button variant="outline" onClick={loadWelcomeFlow}>
+                    Recarregar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
 
-function MediaMessageForm({ onSend, loading }: { onSend: (url: string, caption?: string) => void; loading: boolean }) {
-  const [mediaUrl, setMediaUrl] = useState('');
-  const [caption, setCaption] = useState('');
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <Label htmlFor="mediaUrl">URL da Mídia</Label>
-        <Input
-          id="mediaUrl"
-          placeholder="https://exemplo.com/imagem.jpg"
-          value={mediaUrl}
-          onChange={(e) => setMediaUrl(e.target.value)}
-        />
-      </div>
-      <div>
-        <Label htmlFor="caption">Legenda (opcional)</Label>
-        <Input
-          id="caption"
-          placeholder="Descrição da imagem..."
-          value={caption}
-          onChange={(e) => setCaption(e.target.value)}
-        />
-      </div>
-      <Button onClick={() => onSend(mediaUrl, caption)} disabled={loading}>
-        <Send className="h-4 w-4 mr-2" />
-        Enviar Mídia
-      </Button>
-    </div>
-  );
-}
-
-function LocationMessageForm({
-  onSend,
-  loading,
-}: {
-  onSend: (lat: number, lng: number, name?: string, address?: string) => void;
-  loading: boolean;
-}) {
-  const [lat, setLat] = useState('');
-  const [lng, setLng] = useState('');
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-
-  return (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <Label htmlFor="lat">Latitude*</Label>
-          <Input id="lat" placeholder="-20.2976178" value={lat} onChange={(e) => setLat(e.target.value)} />
-        </div>
-        <div>
-          <Label htmlFor="lng">Longitude*</Label>
-          <Input id="lng" placeholder="-40.2957768" value={lng} onChange={(e) => setLng(e.target.value)} />
-        </div>
-      </div>
-      <div>
-        <Label htmlFor="locName">Nome (opcional)</Label>
-        <Input id="locName" placeholder="Minha Loja" value={name} onChange={(e) => setName(e.target.value)} />
-      </div>
-      <div>
-        <Label htmlFor="address">Endereço (opcional)</Label>
-        <Input
-          id="address"
-          placeholder="Rua Exemplo, 123"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-        />
-      </div>
-      <Button onClick={() => onSend(parseFloat(lat), parseFloat(lng), name, address)} disabled={loading}>
-        <Send className="h-4 w-4 mr-2" />
-        Enviar Localização
-      </Button>
-    </div>
-  );
-}
-
-function ListMessageForm({
-  onSend,
-  loading,
-}: {
-  onSend: (title: string, text: string, buttonText: string, sections: any[]) => void;
-  loading: boolean;
-}) {
-  const [title, setTitle] = useState('');
-  const [text, setText] = useState('');
-  const [buttonText, setButtonText] = useState('');
-
-  const handleSend = () => {
-    const sections = [
-      {
-        title: 'Atendimento',
-        rows: [
-          { id: 'OP1', title: 'Falar com humano', description: 'Encaminhar ao atendente' },
-          { id: 'OP2', title: 'Status do pedido', description: 'Consultar automaticamente' },
-        ],
-      },
-    ];
-    onSend(title, text, buttonText, sections);
-  };
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <Label htmlFor="listTitle">Título (opcional)</Label>
-        <Input id="listTitle" placeholder="Opções" value={title} onChange={(e) => setTitle(e.target.value)} />
-      </div>
-      <div>
-        <Label htmlFor="listText">Texto*</Label>
-        <Input
-          id="listText"
-          placeholder="Escolha uma opção:"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-      </div>
-      <div>
-        <Label htmlFor="listButton">Texto do Botão*</Label>
-        <Input
-          id="listButton"
-          placeholder="Ver opções"
-          value={buttonText}
-          onChange={(e) => setButtonText(e.target.value)}
-        />
-      </div>
-      <p className="text-sm text-muted-foreground">
-        (Seções/opções pré-configuradas: "Falar com humano" e "Status do pedido")
-      </p>
-      <Button onClick={handleSend} disabled={loading}>
-        <Send className="h-4 w-4 mr-2" />
-        Enviar Lista
-      </Button>
-    </div>
-  );
-}
-
-function ContactMessageForm({
-  onSend,
-  loading,
-}: {
-  onSend: (fullName: string, org: string, phones: any[]) => void;
-  loading: boolean;
-}) {
-  const [fullName, setFullName] = useState('');
-  const [org, setOrg] = useState('');
-  const [phone, setPhone] = useState('');
-
-  const handleSend = () => {
-    const phones = [{ number: phone, type: 'WORK' }];
-    onSend(fullName, org, phones);
-  };
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <Label htmlFor="fullName">Nome Completo*</Label>
-        <Input
-          id="fullName"
-          placeholder="Fulano da Silva"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-        />
-      </div>
-      <div>
-        <Label htmlFor="org">Organização (opcional)</Label>
-        <Input id="org" placeholder="Minha Empresa" value={org} onChange={(e) => setOrg(e.target.value)} />
-      </div>
-      <div>
-        <Label htmlFor="phone">Telefone*</Label>
-        <Input id="phone" placeholder="5527997000000" value={phone} onChange={(e) => setPhone(e.target.value)} />
-      </div>
-      <Button onClick={handleSend} disabled={loading}>
-        <Send className="h-4 w-4 mr-2" />
-        Enviar Contato
-      </Button>
-    </div>
-  );
-}
-
-function SaveContactForm({ onSave, loading }: { onSave: (phone: string, name: string) => void; loading: boolean }) {
-  const [phone, setPhone] = useState('');
-  const [name, setName] = useState('');
-
-  return (
-    <div className="space-y-3">
-      <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <Label htmlFor="savePhone">Telefone*</Label>
-          <Input id="savePhone" placeholder="5527997222542" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        </div>
-        <div>
-          <Label htmlFor="saveName">Nome*</Label>
-          <Input id="saveName" placeholder="João Silva" value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-      </div>
-      <Button onClick={() => onSave(phone, name)} disabled={loading}>
-        Salvar Contato
-      </Button>
+        <TabsContent value="manual">
+          <Card>
+            <CardHeader>
+              <CardTitle>Envio Manual (Testes)</CardTitle>
+              <CardDescription>Envie mensagens manualmente para testar</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Use os endpoints via API ou cURL para enviar mensagens manuais:
+                <br />
+                POST /api/wpp/{'{instanceName}'}/messages/text
+                <br />
+                POST /api/wpp/{'{instanceName}'}/messages/audio
+                <br />
+                POST /api/wpp/{'{instanceName}'}/messages/media
+                <br />
+                POST /api/wpp/{'{instanceName}'}/messages/location
+                <br />
+                POST /api/wpp/{'{instanceName}'}/messages/list
+                <br />
+                POST /api/wpp/{'{instanceName}'}/messages/contact
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -11,8 +11,11 @@ import olxAdsRoutes from './routes/olx-ads.mjs'; /* Busca anuncios*/
 import olxLeadsRoutes from './routes/olx-leads.mjs'; /* Rota para ler leads */
 import olxDebugRoutes from './routes/olx-debug.mjs'; /*Rota de debug LEADS*/
 import wppRoutes from './routes/wpp.mjs';
+import wppInstancesRoutes from './routes/wpp-instances.mjs';
 import wppMessagesRoutes from './routes/wpp-messages.mjs';
+import wppWelcomeFlowRoutes from './routes/wpp-welcome-flow.mjs';
 import contactsRoutes from './routes/contacts.mjs';
+import webhooksRoutes from './routes/webhooks.mjs';
 
 const app = express();
 
@@ -65,8 +68,11 @@ app.use(olxAdsRoutes);/* Rota de buscas de anuncios na olx*/
 app.use('/', olxLeadsRoutes);  /* Rota para ler leadsinfo */
 app.use('/api', olxDebugRoutes); /*Debug cadastro lead antes de producao*/
 app.use('/api/wpp', wppRoutes);
+app.use('/api/wpp', wppInstancesRoutes);
 app.use('/api/wpp', wppMessagesRoutes);
+app.use('/api/wpp', wppWelcomeFlowRoutes);
 app.use('/api', contactsRoutes);
+app.use('/webhooks', webhooksRoutes);
 
 // 404
 app.use((req, res) => {
