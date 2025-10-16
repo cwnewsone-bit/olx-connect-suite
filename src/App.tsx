@@ -18,6 +18,7 @@ import Automacao from "./pages/Automacao";
 import OlxConectado from "./pages/OlxConectado";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
+import WhatsApp from "./pages/WhatsApp";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
               <Route path="/anuncios" element={<Anuncios />} />
               <Route path="/contatos" element={<Contatos />} />
               <Route path="/automacao" element={<Automacao />} />
+              <Route path="/whatsapp" element={<WhatsApp />} />
               <Route path="/olx" element={<Dashboard />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
